@@ -171,37 +171,44 @@ architecture behavioral of control_memory is
         ---------------------------------------------------------------
         -- 0x28-0x2F: BSA Komutu (opcode = 101)
         -- BSA: M[AR] ← PC, PC ← AR + 1
-        ---------------------------------------------------------------
+        --
+        -- PC'yi doğrudan DR'ye taşıyan F3 işlemi yoktur.
+        -- TR yazmaç köprüsü kullanılır:
+        --   Adım1: AR←PC (PCTAR), böylece AR geçici olarak PC değerini tutar
+        --          → HAYIR, AR opcode sonrası operand adresini tutar, bozulur.
+        -- Doğru yaklaşım: ACTDR yerine PC→DR için bus sel=PC, DR load.
+        -- Bu mano_computer.vhd'de bus_sel="010" (PC→bus) + dr_load ile sağlanır.
+        -- Mikroprogram burada F3=ACTDR'yi "PC→DR köprüsü" olarak kullanır;
+        -- mano_computer üst modülünde bu sinyal geldiğinde bus_sel=PC seçilir.
+        --
+        -- 0x28: if I=1 → CALL INDIRECT
         40 => NOP1 & NOP2 & NOP3 & I & CALL & INDIR,
-        -- 0x29: DR ← PC bilgisini taşı (PC'yi belleğe yazma hazırlığı)
-        41 => NOP1 & NOP2 & ACTDR & U & JMP & "0101010",  -- geçici: DR ← AC? hayır
-        -- Aslında BSA için: M[AR] ← PC gerekiyor
-        -- DR'ye PC yüklememiz lazım. F3'te böyle bir işlem yok.
-        -- Alternatif: Özel mikrokomut adımı ile
-        -- 0x29: DR(11:0) ← PC zaten bus üzerinden yapılabilir
-        --        ama format kısıtlı. Basitleştirelim:
-        --        Adım1: ACTDR ile DR←AC yerine, PC'yi bus'a koyup DR'ye al
-        --        Mano'da bu "PCTAR" benzeri bir "PCTDR" olmalı ama F3'te yok
-        --        Bu nedenle BSA'yı birkaç adımda yapalım:
-        -- Revize: Şimdilik basit bir yaklaşım (PC→bus→DR desteği varsayarak)
-        42 => NOP1 & NOP2 & WRTEM & U & JMP & "0101011",  -- M[AR]←DR
-        43 => NOP1 & INCPC & NOP3 & U & JMP & "0101100",  -- AR←AR+1 gerek...
-        -- BSA karmaşık, basitleştirilmiş versiyon:
-        44 => NOP1 & ARTPC & NOP3 & U & JMP & FETCH,
+        -- 0x29: DR ← PC  (bus_sel=PC, dr_load aktif — üst modülde çözülür)
+        41 => NOP1 & NOP2 & ACTDR & U & JMP & "0101010",
+        -- 0x2A: M[AR] ← DR  (PC değeri belleğe yazılır)
+        42 => NOP1 & NOP2 & WRTEM & U & JMP & "0101011",
+        -- 0x2B: PC ← AR + 1  (AR hâlâ dönüş adresini gösteriyor)
+        --        ARTPC ile PC←AR, sonra INCPC ile PC←PC+1
+        43 => NOP1 & ARTPC & NOP3 & U & JMP & "0101100",
+        -- 0x2C: PC ← PC + 1
+        44 => NOP1 & INCPC & NOP3 & U & JMP & FETCH,
         45 => MI_NOP, 46 => MI_NOP, 47 => MI_NOP,
 
         ---------------------------------------------------------------
         -- 0x30-0x37: ISZ Komutu (opcode = 110)
         -- ISZ: DR ← M[AR], DR ← DR+1, M[AR] ← DR, if DR=0 → PC++
+        --
+        -- Z koşulu AC=0'ı kontrol eder; DR=0 kontrolü için önce
+        -- AC ← DR yapılır (DRTAC), ardından Z koşuluyla atlama.
         ---------------------------------------------------------------
         48 => NOP1 & NOP2 & NOP3 & I & CALL & INDIR,
         49 => NOP1 & NOP2 & READM & U & JMP & "0110010",  -- DR ← M[AR]
         50 => NOP1 & NOP2 & INCDR & U & JMP & "0110011",  -- DR ← DR + 1
         51 => NOP1 & NOP2 & WRTEM & U & JMP & "0110100",  -- M[AR] ← DR
-        52 => NOP1 & INCPC & NOP3 & Z & JMP & FETCH,      -- if AC=0: PC++, fetch
-        -- Not: ISZ'de DR=0 kontrolü gerekiyor, Z koşulu AC için.
-        -- Basitleştirme: DR'yi AC'ye taşıyıp kontrol edebiliriz.
-        53 => MI_NOP, 54 => MI_NOP, 55 => MI_NOP,
+        52 => DRTAC & NOP2 & NOP3 & U & JMP & "0110101",  -- AC ← DR (sıfır testi için)
+        53 => NOP1 & INCPC & NOP3 & Z & JMP & FETCH,      -- if AC(=DR)=0: PC++, fetch
+        54 => NOP1 & NOP2 & NOP3 & U & JMP & FETCH,       -- DR≠0: direkt fetch
+        55 => MI_NOP,
 
         ---------------------------------------------------------------
         -- 0x38-0x3F: Register-Reference / I/O (opcode = 111)

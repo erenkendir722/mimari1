@@ -1,0 +1,147 @@
+// Mano Computer — Üst Modül
+// Mano Temel Bilgisayarı (Mikroprogramlanmış Kontrol)
+module mano_computer (
+    input  wire       clk,
+    input  wire       reset,
+    input  wire [7:0] inpr,
+    output reg  [7:0] outr,
+    input  wire       fgi,
+    output wire       fgo,
+    output wire [15:0] debug_ac,
+    output wire [11:0] debug_pc,
+    output wire [6:0]  debug_car
+);
+    // ── Veri yolu ─────────────────────────────────────────────────────
+    wire [11:0] ar_out, pc_out;
+    wire [15:0] ac_out, dr_out, tr_out, ir_out;
+    wire [15:0] bus_out;
+    reg  [2:0]  bus_sel;
+    wire [15:0] alu_result;
+    wire        alu_carry_out;
+    reg  [2:0]  alu_op;
+    reg         e_flag;
+    wire        ac_zero;
+    wire [15:0] ram_out;
+
+    // ── Kontrol sinyalleri ────────────────────────────────────────────
+    wire f1_add, f1_clrac, f1_incac, f1_drtac, f1_andac, f1_comac, f1_clre;
+    wire f2_sub, f2_or, f2_shl, f2_shr, f2_incpc, f2_artpc, f2_come;
+    wire f3_read, f3_write, f3_pctar, f3_irtar, f3_actdr, f3_incdr, f3_drtir;
+    wire [19:0] debug_mi;
+
+    // ── Yazmaç yükleme sinyalleri ─────────────────────────────────────
+    wire ar_load, pc_load, pc_inc;
+    wire ac_load, ac_clr, ac_inc;
+    wire dr_load, dr_inc;
+    wire ir_load;
+
+    // ── Alt modüller ──────────────────────────────────────────────────
+    reg12 u_ar (.clk(clk), .reset(reset), .load(ar_load), .clr(1'b0), .inc(1'b0),
+                .data_in(bus_out[11:0]), .data_out(ar_out));
+
+    reg12 u_pc (.clk(clk), .reset(reset), .load(pc_load), .clr(1'b0), .inc(pc_inc),
+                .data_in(ar_out),         .data_out(pc_out));
+
+    reg16 u_ac (.clk(clk), .reset(reset), .load(ac_load), .clr(ac_clr), .inc(ac_inc),
+                .data_in(alu_result),     .data_out(ac_out));
+
+    reg16 u_dr (.clk(clk), .reset(reset), .load(dr_load), .clr(1'b0), .inc(dr_inc),
+                .data_in(bus_out),        .data_out(dr_out));
+
+    reg16 u_tr (.clk(clk), .reset(reset), .load(f3_actdr), .clr(1'b0), .inc(1'b0),
+                .data_in(bus_out),        .data_out(tr_out));
+
+    reg16 u_ir (.clk(clk), .reset(reset), .load(ir_load), .clr(1'b0), .inc(1'b0),
+                .data_in(bus_out),        .data_out(ir_out));
+
+    common_bus u_bus (
+        .sel(bus_sel), .ar_in(ar_out), .pc_in(pc_out),
+        .dr_in(dr_out), .ac_in(ac_out), .ir_in(ir_out),
+        .tr_in(tr_out), .inpr_in(inpr), .bus_out(bus_out)
+    );
+
+    alu u_alu (
+        .a(ac_out), .b(dr_out), .op(alu_op),
+        .carry_in(e_flag), .result(alu_result), .carry_out(alu_carry_out)
+    );
+
+    ram4096 u_ram (
+        .clk(clk), .address(ar_out), .data_in(dr_out),
+        .read(f3_read), .write(f3_write), .data_out(ram_out)
+    );
+
+    control_unit u_ctrl (
+        .clk(clk), .reset(reset), .ir_reg(ir_out),
+        .ac_sign(ac_out[15]), .ac_zero(ac_zero), .e_flag(e_flag),
+        .f1_add(f1_add), .f1_clrac(f1_clrac), .f1_incac(f1_incac),
+        .f1_drtac(f1_drtac), .f1_andac(f1_andac), .f1_comac(f1_comac),
+        .f1_clre(f1_clre),
+        .f2_sub(f2_sub), .f2_or(f2_or), .f2_shl(f2_shl), .f2_shr(f2_shr),
+        .f2_incpc(f2_incpc), .f2_artpc(f2_artpc), .f2_come(f2_come),
+        .f3_read(f3_read), .f3_write(f3_write), .f3_pctar(f3_pctar),
+        .f3_irtar(f3_irtar), .f3_actdr(f3_actdr), .f3_incdr(f3_incdr),
+        .f3_drtir(f3_drtir),
+        .debug_car(debug_car), .debug_mi(debug_mi)
+    );
+
+    // ── Kontrol sinyal bağlantıları ───────────────────────────────────
+
+    // AR: PCTAR (AR←PC, bus_sel=PC) veya IRTAR (AR←IR[11:0], bus_sel=IR)
+    assign ar_load = f3_pctar | f3_irtar;
+
+    // IR: DRTIR (IR←DR, bus_sel=DR)
+    assign ir_load = f3_drtir;
+
+    // DR: bellekten okuma (DR←ram_out) veya ACTDR (BSA için DR←PC)
+    assign dr_load = f3_read | f3_actdr;
+    assign dr_inc  = f3_incdr;
+
+    // PC
+    assign pc_load = f2_artpc;
+    assign pc_inc  = f2_incpc;
+
+    // AC
+    assign ac_load = f1_add | f1_drtac | f1_andac | f1_comac |
+                     f2_sub | f2_or | f2_shl | f2_shr;
+    assign ac_clr  = f1_clrac;
+    assign ac_inc  = f1_incac;
+
+    // Bus seçim mantığı
+    always @(*) begin
+        if      (f3_pctar) bus_sel = 3'b010; // PC → bus → AR
+        else if (f3_irtar) bus_sel = 3'b101; // IR → bus → AR
+        else if (f3_drtir) bus_sel = 3'b011; // DR → bus → IR
+        else if (f3_actdr) bus_sel = 3'b010; // PC → bus → DR (BSA için)
+        else               bus_sel = 3'b000;
+    end
+
+    // ALU işlem kodu
+    always @(*) begin
+        if      (f1_add)   alu_op = 3'b001; // ADD
+        else if (f1_andac) alu_op = 3'b010; // AND
+        else if (f1_comac) alu_op = 3'b011; // COM
+        else if (f2_shr)   alu_op = 3'b100; // SHR
+        else if (f2_shl)   alu_op = 3'b101; // SHL
+        else if (f1_incac) alu_op = 3'b110; // INC
+        else if (f2_or)    alu_op = 3'b111; // OR
+        else               alu_op = 3'b000; // PASSA
+    end
+
+    // E biti
+    always @(posedge clk or posedge reset) begin
+        if (reset)
+            e_flag <= 1'b0;
+        else if (f1_clre)
+            e_flag <= 1'b0;
+        else if (f2_come)
+            e_flag <= ~e_flag;
+        else if (f1_add | f1_incac | f2_shl | f2_shr)
+            e_flag <= alu_carry_out;
+    end
+
+    assign ac_zero  = (ac_out == 16'h0000);
+    assign fgo      = 1'b0;
+    assign debug_ac = ac_out;
+    assign debug_pc = pc_out;
+
+endmodule
