@@ -1,7 +1,7 @@
-// Control Address Register (CAR) — 7-bit
-// reset → 0x40 (FETCH başlangıcı)
-// load  → CAR ← load_data
-// inc   → CAR ← CAR + 1
+// Control Address Register (CAR) ??? 7-bit
+// reset ??? 0x40 (FETCH ba??lang??c??)
+// load  ??? CAR ??? load_data
+// inc   ??? CAR ??? CAR + 1
 module car (
     input  wire       clk,
     input  wire       reset,

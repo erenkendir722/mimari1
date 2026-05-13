@@ -1,6 +1,6 @@
-// Subroutine Register (SBR) — 7-bit
-// CALL: SBR ← CAR+1
-// RET : CAR ← SBR
+// Subroutine Register (SBR) ??? 7-bit
+// CALL: SBR ??? CAR+1
+// RET : CAR ??? SBR
 module sbr (
     input  wire       clk,
     input  wire       reset,

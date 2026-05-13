@@ -1,7 +1,7 @@
-// ALU — Aritmetik ve Mantıksal Birim
-// op kodları:
+// ALU ??? Aritmetik ve Mant??ksal Birim
+// op kodlar??:
 //   000 = PASSA   001 = ADD   010 = AND   011 = COM
-//   100 = SHR     101 = SHL   110 = INC   111 = OR
+//   100 = SHR     101 = SHL   110 = iNC   111 = OR
 module alu (
     input  wire [15:0] a,
     input  wire [15:0] b,
@@ -19,7 +19,7 @@ module alu (
             3'b011: result = ~a;                             // COM
             3'b100: begin result = {carry_in, a[15:1]}; carry_out = a[0];  end // SHR
             3'b101: begin result = {a[14:0], carry_in}; carry_out = a[15]; end // SHL
-            3'b110: {carry_out, result} = {1'b0,a} + 1;     // INC
+            3'b110: {carry_out, result} = {1'b0,a} + 1;     // iNC
             3'b111: result = a | b;                          // OR
             default: result = 16'h0000;
         endcase
