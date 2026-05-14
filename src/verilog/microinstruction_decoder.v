@@ -1,8 +1,8 @@
-// Microinstruction Decoder — 20-bit mikrokomutu kontrol sinyallerine çevirir
+// Microinstruction Decoder ??? 20-bit mikrokomutu kontrol sinyallerine ??evirir
 module microinstruction_decoder (
     input  wire [19:0] microinstruction,
 
-    // F1 çıkışları (ALU / AC)
+    // F1 ????k????lar?? (ALU / AC)
     output wire f1_add,
     output wire f1_clrac,
     output wire f1_incac,
@@ -11,7 +11,7 @@ module microinstruction_decoder (
     output wire f1_comac,
     output wire f1_clre,
 
-    // F2 çıkışları (Yazmaç / Shift)
+    // F2 ????k????lar?? (Yazma?? / Shift)
     output wire f2_sub,
     output wire f2_or,
     output wire f2_shl,
@@ -20,7 +20,7 @@ module microinstruction_decoder (
     output wire f2_artpc,
     output wire f2_come,
 
-    // F3 çıkışları (Bellek / I-O)
+    // F3 ????k????lar?? (Bellek / i-O)
     output wire f3_read,
     output wire f3_write,
     output wire f3_pctar,
@@ -29,7 +29,7 @@ module microinstruction_decoder (
     output wire f3_incdr,
     output wire f3_drtir,
 
-    // Dallanma alanları
+    // Dallanma alanlar??
     output wire [1:0] cd_field,
     output wire [1:0] br_field,
     output wire [6:0] ad_field

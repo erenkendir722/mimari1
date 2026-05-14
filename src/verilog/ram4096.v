@@ -1,4 +1,4 @@
-// RAM — 4096 x 16-bit Senkron Bellek
+// RAM ??? 4096 x 16-bit Senkron Bellek
 module ram4096 (
     input  wire        clk,
     input  wire [11:0] address,

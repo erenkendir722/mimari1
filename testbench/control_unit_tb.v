@@ -59,99 +59,91 @@ module control_unit_tb;
         // ── RESET ──
         reset = 1;
         repeat(2) @(posedge clk);
+        #1; // Delay to avoid checking exactly at edge
         reset = 0;
-        @(posedge clk);
 
         // ── FETCH DÖNGÜSÜ TESTİ ──
         $display("--- FETCH Döngüsü ---");
 
-        // FETCH Adım 0 (0x40): AR ← PC → f3_pctar aktif olmalı
+        // CAR=0x40
+        #5; 
         $display("CAR = %0d | f3_pctar = %b", debug_car, f3_pctar);
-        if (debug_car !== 7'b1000000)
-            $error("HATA: CAR reset sonrasi 0x40 olmali!");
-        if (f3_pctar !== 1'b1)
-            $error("HATA: FETCH-0 adiminda f3_pctar aktif olmali!");
-        @(posedge clk);
-
-        // FETCH Adım 1 (0x41): DR ← M[AR], PC ← PC+1
+        if (debug_car !== 7'b1000000) $error("HATA: CAR 0x40 olmali!");
+        if (f3_pctar !== 1'b1) $error("HATA: FETCH-0 adiminda f3_pctar aktif olmali!");
+        
+        @(posedge clk); #5; // CAR=0x41
         $display("CAR = %0d | f3_read = %b | f2_incpc = %b", debug_car, f3_read, f2_incpc);
-        if (f3_read !== 1'b1)
-            $error("HATA: FETCH-1 adiminda f3_read aktif olmali!");
-        if (f2_incpc !== 1'b1)
-            $error("HATA: FETCH-1 adiminda f2_incpc aktif olmali!");
-        @(posedge clk);
-
-        // FETCH Adım 2 (0x42): IR ← DR
+        if (f3_read !== 1'b1) $error("HATA: FETCH-1 adiminda f3_read aktif olmali!");
+        if (f2_incpc !== 1'b1) $error("HATA: FETCH-1 adiminda f2_incpc aktif olmali!");
+        
+        @(posedge clk); #5; // CAR=0x42
         $display("CAR = %0d | f3_drtir = %b", debug_car, f3_drtir);
-        if (f3_drtir !== 1'b1)
-            $error("HATA: FETCH-2 adiminda f3_drtir aktif olmali!");
-        @(posedge clk);
+        if (f3_drtir !== 1'b1) $error("HATA: FETCH-2 adiminda f3_drtir aktif olmali!");
+        
+        @(posedge clk); #5; // CAR=0x43
+        $display("CAR = %0d (MAP adimi)", debug_car);
 
         // ── AND KOMUTU TESTİ (opcode=000) ──
         $display("--- AND Komutu (opcode=000, I=0) ---");
         ir_reg = 16'b0000000000100000; // AND, direct, addr=0x020
-        @(posedge clk); // FETCH Adım 3 (0x43): MAP → CAR ← 0x00
-        $display("CAR = %0d", debug_car);
-
-        // AND 0x00: I=0 → koşul sağlanmaz, CAR+1
-        @(posedge clk);
+        
+        @(posedge clk); #5; // CAR=0x00
         $display("AND-0: CAR = %0d", debug_car);
-
-        // AND 0x01: DR ← M[AR]
-        @(posedge clk);
+        
+        @(posedge clk); #5; // CAR=0x01
         $display("AND-1: CAR = %0d | f3_read = %b", debug_car, f3_read);
-
-        // AND 0x02: AC ← AC AND DR → f1_andac aktif
-        @(posedge clk);
+        if (f3_read !== 1'b1) $error("HATA: AND-1 adiminda f3_read aktif olmali!");
+        
+        @(posedge clk); #5; // CAR=0x02
         $display("AND-2: CAR = %0d | f1_andac = %b", debug_car, f1_andac);
-        if (f1_andac !== 1'b1)
-            $error("HATA: AND execute adiminda f1_andac aktif olmali!");
+        if (f1_andac !== 1'b1) $error("HATA: AND execute adiminda f1_andac aktif olmali!");
 
-        // Fetch'e dönmeli (0x40)
-        @(posedge clk);
+        @(posedge clk); #5; // CAR=0x40 (Fetch'e dönmeli)
         $display("Fetch'e donus: CAR = %0d", debug_car);
-        if (debug_car !== 7'b1000000)
-            $error("HATA: AND sonrasi FETCH'e (0x40) donmeli!");
+        if (debug_car !== 7'b1000000) $error("HATA: AND sonrasi FETCH'e (0x40) donmeli!");
 
         // ── ADD KOMUTU TESTİ (opcode=001) ──
         $display("--- ADD Komutu (opcode=001, I=0) ---");
-        repeat(3) @(posedge clk); // F0, F1, F2
-        ir_reg = 16'b0010000000010000; // ADD, direct, addr=0x010
-        @(posedge clk); // F3: MAP → CAR ← 0x08
-
-        // ADD 0x08: I=0 kontrol
-        @(posedge clk);
+        // FETCH 0, 1, 2
+        @(posedge clk); #5; // 0x41
+        @(posedge clk); #5; // 0x42
+        @(posedge clk); #5; // 0x43
+        ir_reg = 16'b0001000000010000; // ADD, direct, addr=0x010
+        
+        @(posedge clk); #5; // MAP → CAR=0x08
         $display("ADD-0: CAR = %0d", debug_car);
 
-        // ADD 0x09: DR ← M[AR]
-        @(posedge clk);
+        @(posedge clk); #5; // CAR=0x09
         $display("ADD-1: CAR = %0d | f3_read = %b", debug_car, f3_read);
+        if (f3_read !== 1'b1) $error("HATA: ADD-1 adiminda f3_read aktif olmali!");
 
-        // ADD 0x0A: AC ← AC + DR
-        @(posedge clk);
+        @(posedge clk); #5; // CAR=0x0A
         $display("ADD-2: CAR = %0d | f1_add = %b", debug_car, f1_add);
-        if (f1_add !== 1'b1)
-            $error("HATA: ADD execute adiminda f1_add aktif olmali!");
+        if (f1_add !== 1'b1) $error("HATA: ADD execute adiminda f1_add aktif olmali!");
 
-        @(posedge clk);
-        if (debug_car !== 7'b1000000)
-            $error("HATA: ADD sonrasi FETCH'e donmeli!");
+        @(posedge clk); #5; // CAR=0x40
+        if (debug_car !== 7'b1000000) $error("HATA: ADD sonrasi FETCH'e donmeli!");
 
         // ── LDA KOMUTU TESTİ (opcode=010) ──
         $display("--- LDA Komutu (opcode=010, I=0) ---");
-        repeat(3) @(posedge clk);
-        ir_reg = 16'b0100000000110000; // LDA, direct
-        @(posedge clk); // MAP → CAR ← 0x10
-        @(posedge clk); // LDA-0: I kontrol
-        @(posedge clk); // LDA-1: DR ← M[AR]
-        @(posedge clk); // LDA-2: AC ← DR
-        $display("LDA-2: f1_drtac = %b", f1_drtac);
-        if (f1_drtac !== 1'b1)
-            $error("HATA: LDA execute adiminda f1_drtac aktif olmali!");
+        @(posedge clk); #5; // 0x41
+        @(posedge clk); #5; // 0x42
+        @(posedge clk); #5; // 0x43
+        ir_reg = 16'b0010000000110000; // LDA, direct
+        
+        @(posedge clk); #5; // MAP → CAR=0x10
+        $display("LDA-0: CAR = %0d", debug_car);
+        
+        @(posedge clk); #5; // CAR=0x11
+        $display("LDA-1: CAR = %0d | f3_read = %b", debug_car, f3_read);
+        if (f3_read !== 1'b1) $error("HATA: LDA-1 adiminda f3_read aktif olmali!");
+        
+        @(posedge clk); #5; // CAR=0x12
+        $display("LDA-2: CAR = %0d | f1_drtac = %b", debug_car, f1_drtac);
+        if (f1_drtac !== 1'b1) $error("HATA: LDA execute adiminda f1_drtac aktif olmali!");
 
-        @(posedge clk);
-        if (debug_car !== 7'b1000000)
-            $error("HATA: LDA sonrasi FETCH'e donmeli!");
+        @(posedge clk); #5; // CAR=0x40
+        if (debug_car !== 7'b1000000) $error("HATA: LDA sonrasi FETCH'e donmeli!");
 
         // ── TEST TAMAMLANDI ──
         $display("=== TUM TESTLER TAMAMLANDI ===");

@@ -1,5 +1,5 @@
-// 12-bit Yazmaç
-// Kullanım: AR (Address Register), PC (Program Counter)
+// 12-bit Yazma??
+// Kullan??m: AR (Address Register), PC (Program Counter)
 module reg12 (
     input  wire        clk,
     input  wire        reset,

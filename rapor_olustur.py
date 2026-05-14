@@ -132,7 +132,7 @@ for item in [
     "   4.3. Kontrol Bellegi ve Mikroprogram",
     "   4.4. Performans Kriterleri ve Sinirlamalar",
     "5. Uygulama ve Simulasyon",
-    "   5.1. VHDL Implementasyonu",
+    "   5.1. Verilog Implementasyonu",
     "   5.2. Test Senaryolari ve Sonuclar",
     "6. FPGA Gerceklemesi",
     "   6.1. FPGA Ortami ve Araclar",
@@ -475,15 +475,194 @@ doc.add_page_break()
 heading("4. TASARIM")
 
 heading("4.1. Veri Yolu Tasarimi", level=2)
-note("Bu alt bolum Kisi 2 tarafindan yazilacaktir. Port listesi, blok diyagram ve tasarim kararlari eklenecek.")
 para(
-    "Veri yolu tasarimi, Tablo 3.1'de listelenen tum yazmaclari, ALU birimini, "
-    "4096 x 16-bitlik RAM bellegini ve ortak veri yolunu kapsamaktadir. Her yazmac "
-    "modulu senkron yukle (load), artir (inc) ve sifirla (clr) sinyalleriyle kontrol "
-    "biriminden yonetilmektedir. ALU, F1 alan kodlarina gore ADD, AND, COM, SHR, SHL "
-    "ve INC islemlerini gerceklestirmekte; tasima sonucu E bitine aktarilmaktadir. (PC1)"
+    "Veri yolu tasarimi, Bolum 3.1'de tanimlanan tum yazmaclari, aritmetik ve mantiksal "
+    "birim (ALU), 4096 x 16-bitlik senkron RAM bellegini ve ortak veri yolunu (common bus) "
+    "kapsamaktadir. Tasarim, moduler bir yaklasimla bes temel bilesenden olusmaktadir: "
+    "16-bitlik genel amacli yazmac (reg16), 12-bitlik yazmac (reg12), aritmetik-mantiksal "
+    "birim (ALU), senkron bellek (ram4096) ve 8 kaynakli ortak veri yolu (common_bus). "
+    "Her bilesen bagimsiz bir VHDL entity olarak tanimlanmis ve ust modul (mano_computer) "
+    "icerisinde yapisal (structural) mimari ile birlestirilmistir. (PC1)"
 )
-note("Veri yolu blok diyagramini buraya sekil olarak ekleyin. Ortak veri yolu kaynakları ve secim sinyallerini gosterin.")
+
+heading("4.1.1. Yazmac Modulleri", level=2)
+para(
+    "Sistemde iki farkli genislikte yazmac modulu kullanilmaktadir. 16-bitlik reg16 modulu "
+    "AC (Accumulator), DR (Data Register), TR (Temporary Register) ve IR (Instruction "
+    "Register) yazmaclari icin; 12-bitlik reg12 modulu ise AR (Address Register) ve PC "
+    "(Program Counter) yazmaclari icin kullanilmaktadir. Her iki modul de asenkron reset, "
+    "senkron sifirlama (clr), paralel yukleme (load) ve bir arttirma (inc) islemlerini "
+    "desteklemektedir. Oncelik sirasi clr > load > inc seklindedir; bu siralama tasarim "
+    "belirliligini garanti altina almaktadir. (PC1)"
+)
+
+tbl_reg16 = doc.add_table(rows=8, cols=4)
+tbl_reg16.style = "Table Grid"
+tbl_header(tbl_reg16, ["Port", "Yon", "Genislik", "Aciklama"])
+for i, row in enumerate([
+    ["clk",      "Giris",  "1 bit",   "Sistem saat sinyali"],
+    ["reset",    "Giris",  "1 bit",   "Asenkron sifirlama"],
+    ["load",     "Giris",  "1 bit",   "Paralel yukleme izni"],
+    ["clr",      "Giris",  "1 bit",   "Senkron sifirlama"],
+    ["inc",      "Giris",  "1 bit",   "Bir arttirma"],
+    ["data_in",  "Giris",  "16 bit",  "Yuklenecek veri"],
+    ["data_out", "Cikis",  "16 bit",  "Yazmac cikisi"],
+]):
+    tbl_row(tbl_reg16, i + 1, row)
+cap("Tablo 4.1. reg16 Modulu Port Listesi (AC, DR, TR, IR)")
+
+para(
+    "reg12 modulu reg16 ile ayni arayuze sahiptir; tek fark data_in ve data_out "
+    "portlarinin 12-bit genisliginde olmasidir. Bu modul AR ve PC yazmaclari icin "
+    "kullanilmaktadir. PC icin inc sinyali her fetch dongusunde PC'yi bir arttirmak "
+    "uzere; AR icin ise load sinyali veri yolundan adres yukleme isleminde aktif "
+    "hale gelmektedir. (PC1)"
+)
+
+tbl_reg12 = doc.add_table(rows=8, cols=4)
+tbl_reg12.style = "Table Grid"
+tbl_header(tbl_reg12, ["Port", "Yon", "Genislik", "Aciklama"])
+for i, row in enumerate([
+    ["clk",      "Giris",  "1 bit",   "Sistem saat sinyali"],
+    ["reset",    "Giris",  "1 bit",   "Asenkron sifirlama"],
+    ["load",     "Giris",  "1 bit",   "Paralel yukleme izni"],
+    ["clr",      "Giris",  "1 bit",   "Senkron sifirlama"],
+    ["inc",      "Giris",  "1 bit",   "Bir arttirma (PC icin)"],
+    ["data_in",  "Giris",  "12 bit",  "Yuklenecek adres verisi"],
+    ["data_out", "Cikis",  "12 bit",  "Yazmac cikisi"],
+]):
+    tbl_row(tbl_reg12, i + 1, row)
+cap("Tablo 4.2. reg12 Modulu Port Listesi (AR, PC)")
+
+heading("4.1.2. Aritmetik ve Mantiksal Birim (ALU)", level=2)
+para(
+    "ALU modulu, AC yazmaci uzerinde 8 farkli islemi gerceklestirebilen kombinasyonel "
+    "bir birimdir. Girisler olarak 16-bitlik AC degeri (a), 16-bitlik DR degeri (b), "
+    "3-bitlik islem kodu (op) ve mevcut tasima biti (carry_in / E) almaktadir. Cikis "
+    "olarak 16-bitlik islem sonucu (result) ve yeni tasima biti (carry_out) uretir. "
+    "ALU, mikroprogramlanmis kontrol biriminin F1 ve F2 alanlarindan uretilen islem "
+    "kodlariyla yonetilmektedir. (PC1)"
+)
+
+tbl_alu_port = doc.add_table(rows=7, cols=4)
+tbl_alu_port.style = "Table Grid"
+tbl_header(tbl_alu_port, ["Port", "Yon", "Genislik", "Aciklama"])
+for i, row in enumerate([
+    ["a",         "Giris",  "16 bit",  "AC yazmac degeri"],
+    ["b",         "Giris",  "16 bit",  "DR yazmac degeri"],
+    ["op",        "Giris",  "3 bit",   "Islem secim kodu"],
+    ["carry_in",  "Giris",  "1 bit",   "Mevcut E (tasima) biti"],
+    ["result",    "Cikis",  "16 bit",  "Islem sonucu"],
+    ["carry_out", "Cikis",  "1 bit",   "Yeni E (tasima) biti"],
+]):
+    tbl_row(tbl_alu_port, i + 1, row)
+cap("Tablo 4.3. ALU Modulu Port Listesi")
+
+tbl_alu = doc.add_table(rows=9, cols=3)
+tbl_alu.style = "Table Grid"
+tbl_header(tbl_alu, ["Op Kodu", "Islem", "Aciklama"])
+for i, row in enumerate([
+    ["000", "PASSA", "result <- a (veri yolu gecisi)"],
+    ["001", "ADD",   "result <- a + b, E <- carry"],
+    ["010", "AND",   "result <- a AND b"],
+    ["011", "COM",   "result <- NOT a (1'e tumleyen)"],
+    ["100", "SHR",   "result <- E & a[15:1], E <- a[0]"],
+    ["101", "SHL",   "result <- a[14:0] & E, E <- a[15]"],
+    ["110", "INC",   "result <- a + 1 (bir arttir)"],
+    ["111", "OR",    "result <- a OR b"],
+]):
+    tbl_row(tbl_alu, i + 1, row)
+cap("Tablo 4.4. ALU Islem Kodlari ve Islevleri")
+
+para(
+    "ADD ve INC islemlerinde 17-bitlik ara toplam kullanilarak tasima biti (carry_out) "
+    "dogal olarak hesaplanmaktadir. SHR isleminde mevcut E biti MSB konumuna yerlestirilir "
+    "ve LSB yeni E degeri olarak cikarilir. SHL isleminde ise E biti LSB'ye yerlestirilir "
+    "ve MSB yeni E degeri olarak cikarilir. Bu dairesel kaydirma mekanizmasi Mano "
+    "bilgisayarinin CIR ve CIL komutlarini dogru bicimde desteklemektedir. (PC1)"
+)
+
+heading("4.1.3. Ana Bellek (RAM)", level=2)
+para(
+    "RAM modulu 4096 x 16-bitlik senkron bir bellek olarak tasarlanmistir. Saat "
+    "sinyalinin yukselen kenarinda read veya write sinyaline gore okuma ya da yazma "
+    "islemi gerceklestirilir. Ayni cevrimde hem read hem write aktif oldugunda yazma "
+    "onceliklidir. Adres girisi 12-bit genisliginde olup AR (Address Register) tarafindan "
+    "saglanmaktadir; veri girisi ve cikisi 16-bit genisligindedir. FPGA sentezinde bu "
+    "modul BRAM (Block RAM) kaynaklarina eslenmektedir. (PC1)"
+)
+
+tbl_ram = doc.add_table(rows=7, cols=4)
+tbl_ram.style = "Table Grid"
+tbl_header(tbl_ram, ["Port", "Yon", "Genislik", "Aciklama"])
+for i, row in enumerate([
+    ["clk",      "Giris",  "1 bit",   "Sistem saat sinyali"],
+    ["address",  "Giris",  "12 bit",  "Bellek adresi (AR'den)"],
+    ["data_in",  "Giris",  "16 bit",  "Yazilacak veri (DR'den)"],
+    ["read",     "Giris",  "1 bit",   "Okuma izni"],
+    ["write",    "Giris",  "1 bit",   "Yazma izni"],
+    ["data_out", "Cikis",  "16 bit",  "Okunan veri"],
+]):
+    tbl_row(tbl_ram, i + 1, row)
+cap("Tablo 4.5. ram4096 Modulu Port Listesi")
+
+heading("4.1.4. Ortak Veri Yolu (Common Bus)", level=2)
+para(
+    "Ortak veri yolu, 3-bitlik secim sinyali (sel) ile 8 farkli kaynaktan birini "
+    "16-bitlik veri yoluna baglayan bir cokleyici (multiplexer) yapisindadir. 12-bitlik "
+    "yazmaclar (AR, PC) veri yoluna baglanirken ust 4 bit sifir ile doldurulur; 8-bitlik "
+    "INPR giris yazmaci icin ise ust 8 bit sifir ile doldurulmaktadir. Secim sinyalleri "
+    "mikroprogramlanmis kontrol biriminin F3 alani tarafindan uretilir ve ust modul "
+    "(mano_computer) icerisinde kontrol sinyallerine gore atanmaktadir. (PC1)"
+)
+
+tbl_bus_port = doc.add_table(rows=10, cols=4)
+tbl_bus_port.style = "Table Grid"
+tbl_header(tbl_bus_port, ["Port", "Yon", "Genislik", "Aciklama"])
+for i, row in enumerate([
+    ["sel",      "Giris",  "3 bit",   "Kaynak secim sinyali"],
+    ["ar_in",    "Giris",  "12 bit",  "AR yazmac girisi"],
+    ["pc_in",    "Giris",  "12 bit",  "PC yazmac girisi"],
+    ["dr_in",    "Giris",  "16 bit",  "DR yazmac girisi"],
+    ["ac_in",    "Giris",  "16 bit",  "AC yazmac girisi"],
+    ["ir_in",    "Giris",  "16 bit",  "IR yazmac girisi"],
+    ["tr_in",    "Giris",  "16 bit",  "TR yazmac girisi"],
+    ["inpr_in",  "Giris",  "8 bit",   "Giris yazmaci (INPR)"],
+    ["bus_out",  "Cikis",  "16 bit",  "Ortak veri yolu cikisi"],
+]):
+    tbl_row(tbl_bus_port, i + 1, row)
+cap("Tablo 4.6. common_bus Modulu Port Listesi")
+
+tbl_bus = doc.add_table(rows=9, cols=3)
+tbl_bus.style = "Table Grid"
+tbl_header(tbl_bus, ["Secim (sel)", "Kaynak", "Aciklama"])
+for i, row in enumerate([
+    ["000", "(yok / HiZ)",   "Hicbir kaynak secilmemis, bus = 0"],
+    ["001", "AR (12-bit)",   "Ust 4 bit sifir doldurulur"],
+    ["010", "PC (12-bit)",   "Ust 4 bit sifir doldurulur"],
+    ["011", "DR (16-bit)",   "Tam 16-bit veri aktarimi"],
+    ["100", "AC (16-bit)",   "Tam 16-bit veri aktarimi"],
+    ["101", "IR (16-bit)",   "Tam 16-bit veri aktarimi"],
+    ["110", "TR (16-bit)",   "Tam 16-bit veri aktarimi"],
+    ["111", "INPR (8-bit)",  "Ust 8 bit sifir doldurulur"],
+]):
+    tbl_row(tbl_bus, i + 1, row)
+cap("Tablo 4.7. Ortak Veri Yolu Kaynak Secim Tablosu")
+
+heading("4.1.5. Tasarim Kararlari", level=2)
+para(
+    "Veri yolu tasariminda alinan temel kararlar sunlardir: (i) Tum yazmaclar senkron "
+    "tasarim prensibiyle gerceklenmis olup asenkron reset destegi yalnizca sistem baslatma "
+    "icin kullanilmaktadir; bu yaklasim FPGA sentezinde guvenilir zamanlama saglamaktadir. "
+    "(ii) RAM modulu tek portlu senkron bellek olarak tasarlanmistir; ayni cevrimde okuma "
+    "ve yazma catismasini onlemek icin yazma islemine oncelik verilmektedir. "
+    "(iii) Ortak veri yolu 16-bit genisliginde secilmis olup dar yazmaclar (AR: 12-bit, "
+    "INPR: 8-bit) sifir uzatma (zero-extension) ile veri yoluna baglanmaktadir. "
+    "(iv) ALU tamamen kombinasyonel olarak tasarlanmistir; sonuclarin yazmaclara "
+    "yansitilmasi saat kenarinda kontrol sinyalleriyle saglanmaktadir. "
+    "(v) Yazmac modullerinde oncelik sirasi clr > load > inc olarak belirlenerek "
+    "tasarim belirliligini garanti altina almaktadir. (PC1, PC5)"
+)
 
 heading("4.2. Mikrokomut Formati", level=2)
 note("Bu alt bolum Kisi 3 tarafindan yazilacaktir. F1, F2, F3 kodlama tablolari buraya eklenecek.")
@@ -531,15 +710,243 @@ doc.add_page_break()
 # ══════════════════════════════════════════════════════════════════════
 heading("5. UYGULAMA VE SIMULASYON")
 
-heading("5.1. VHDL Implementasyonu", level=2)
-note("Bu alt bolum Kisi 2 ve Kisi 3 tarafindan yazilacaktir. Modul hiyerarsisi, arac bilgileri ve kritik kod kesitleri eklenecek.")
+heading("5.1. Verilog Implementasyonu", level=2)
 para(
-    "Sistemin tamami VHDL donanim tanimlama dili ile gelistirilmistir. Modul hiyerarsisi "
-    "uc katmandan olusur: temel bilesenleri iceren veri yolu katmani (reg16, reg12, "
-    "alu, ram4096, common_bus), kontrol birimini olusturan katman (control_memory, "
-    "car_sbr, microinstruction_decoder) ve bunlari birlestiren ust modul (mano_computer). "
-    "Xilinx Vivado ortami tasarim, simulasyon ve sentez asamalarinin tumu icin "
-    "kullanilmistir. (PC5)"
+    "Sistemin tamami Verilog donanim tanimlama dili ile gelistirilmistir. Tasarim ve "
+    "simulasyon asamalarinda Xilinx Vivado 2025.1 ortami kullanilmis; tum modullerde "
+    "IEEE standart wire ve reg veri tipleri tercih edilmistir. Tasarim toplam 11 Verilog "
+    "modulunden olusmakta olup uc katmanli hiyerarsik bir mimari izlenmektedir. Her modul "
+    "bagimsiz bir .v dosyasi olarak tanimlanmis ve ust modul (mano_computer) icerisinde "
+    "yapisal (structural) ornekleme ile birlestirilmistir. (PC5)"
+)
+
+heading("5.1.1. Modul Hiyerarsisi", level=2)
+para(
+    "Birinci katman olan veri yolu katmani, temel veri depolama ve islem bilesenlerini "
+    "icerir: reg16 (16-bit yazmac, 4 ornekleme: AC, DR, TR, IR), reg12 (12-bit yazmac, "
+    "2 ornekleme: AR, PC), reg8 (8-bit yazmac, 2 ornekleme: INPR, OUTR), alu (8 islemli "
+    "aritmetik-mantiksal birim), ram4096 (4096 x 16-bit senkron bellek) ve common_bus "
+    "(8 kaynakli 16-bit ortak veri yolu). Bu katmandaki bilesenler kontrol biriminden "
+    "bagimsiz olarak test edilebilir yapidadir. (PC5)"
+)
+para(
+    "Ikinci katman olan kontrol birimi katmani, mikroprogramlanmis kontrol mimarisinin "
+    "cekirdek bilesenlerini barindirir: car (Control Address Register, 7-bit), sbr "
+    "(Subroutine Register, 7-bit), control_memory (128 x 20-bit ROM) ve "
+    "microinstruction_decoder (20-bit mikrokomutu 21 ayri kontrol sinyaline ceviren "
+    "kombinasyonel cozucu). Bu bilesenler, kontrol birimi ust modulu (control_unit) "
+    "icerisinde birlestirilmistir. control_unit modulu ayrica kosul degerlendirme "
+    "(CD alani) ve dallanma mantigi (BR alani) icin gerekli kombinasyonel lojigi de "
+    "barindirmaktadir. (PC5)"
+)
+para(
+    "Ucuncu katman, mano_computer ust moduludur. Bu modul veri yolu katmani ile kontrol "
+    "birimi katmanini yapisal (structural) mimari kullanarak birlestirir. Kontrol "
+    "biriminden gelen F1, F2, F3 sinyalleri, ust modul icerisinde yazmac yukleme, "
+    "ALU islem kodu secimi, bus kaynagi secimi ve E biti guncelleme mantigina "
+    "donusturulmektedir. Sistemin dis arayuzu saat (clk), sifirlama (reset), 8-bit "
+    "giris yazmaci (inpr), 8-bit cikis yazmaci (outr) ve debug portlarindan "
+    "olusmaktadir. (PC5)"
+)
+
+tbl_mod = doc.add_table(rows=13, cols=4)
+tbl_mod.style = "Table Grid"
+tbl_header(tbl_mod, ["Modul", "Dosya", "Katman", "Islev"])
+for i, row in enumerate([
+    ["reg16",       "reg16.v",       "Veri Yolu",       "16-bit yazmac (AC, DR, TR, IR)"],
+    ["reg12",       "reg12.v",       "Veri Yolu",       "12-bit yazmac (AR, PC)"],
+    ["reg8",        "reg8.v",        "Veri Yolu",       "8-bit yazmac (INPR, OUTR)"],
+    ["alu",         "alu.v",         "Veri Yolu",       "8 islemli ALU birimi"],
+    ["ram4096",     "ram4096.v",     "Veri Yolu",       "4096x16 senkron bellek"],
+    ["common_bus",  "common_bus.v",  "Veri Yolu",       "8 kaynakli ortak veri yolu"],
+    ["car",         "car.v",         "Kontrol Birimi",  "7-bit kontrol adres yazmaci"],
+    ["sbr",         "sbr.v",         "Kontrol Birimi",  "7-bit alt program yazmaci"],
+    ["control_memory", "control_memory.v", "Kontrol Birimi", "128x20 bit kontrol bellegi (ROM)"],
+    ["micro_decoder", "microinstruction_decoder.v", "Kontrol Birimi", "20-bit mikrokomut cozucu"],
+    ["control_unit", "control_unit.v", "Kontrol Birimi", "Kontrol birimi ust modulu"],
+    ["mano_computer", "mano_computer.v", "Ust Modul", "Sistem ust modulu"],
+]):
+    tbl_row(tbl_mod, i + 1, row)
+cap("Tablo 5.1. Verilog Modul Hiyerarsisi")
+
+heading("5.1.2. Veri Yolu Katmani Detaylari", level=2)
+para(
+    "Yazmac modulleri (reg16 ve reg12), saat sinyalinin yukselen kenarinda (posedge clk) "
+    "calisan senkron yapilardir. Her iki modul de asenkron sifirlama (posedge reset), "
+    "senkron sifirlama (clr), paralel yukleme (load) ve bir arttirma (inc) islemlerini "
+    "desteklemektedir. Oncelik sirasi reset > clr > load > inc olarak belirlenmis olup "
+    "bu siralama Verilog kodunda if-else if zincirleme yapisindaki kosul siralamasiyla "
+    "garanti altina alinmistir. reg16 modulu AC, DR, TR ve IR yazmaclari icin, reg12 "
+    "modulu AR ve PC yazmaclari icin, reg8 modulu ise INPR ve OUTR I/O portlari icin "
+    "orneklenmistir. Bu yapi, yazmaclarin dogrudan mano_computer icinde degil de "
+    "hiyerarsiye uygun bicimde moduller halinde tanimlanmasini saglamaktadir. (PC1)"
+)
+para(
+    "ALU modulu tamamen kombinasyonel (always @(*)) bir birim olarak tasarlanmistir. "
+    "16-bit genisligindeki iki giris (a: AC degeri, b: DR degeri), 3-bit islem kodu (op) "
+    "ve mevcut tasima biti (carry_in) ile calismaktadir. ADD ve INC islemlerinde "
+    "17-bit ara toplam ({1'b0, a} + {1'b0, b}) kullanilarak carry_out dogal olarak "
+    "hesaplanmaktadir. SHR isleminde carry_in MSB konumuna yerlestirilirken a[0] yeni "
+    "carry_out olur; SHL isleminde ise carry_in LSB'ye yerlestirilirken a[15] yeni "
+    "carry_out olur. Bu dairesel kaydirma mekanizmasi Mano bilgisayarinin CIR ve CIL "
+    "komutlarini dogru bicimde desteklemektedir. (PC1)"
+)
+para(
+    "RAM modulu (ram4096) 4096 x 16-bit kapasiteli senkron bir bellek olarak "
+    "gerceklenmistir. Verilog'da 'reg [15:0] mem [0:4095]' dizisi ile tanimlanmis "
+    "olup initial blogu ile tum konumlar sifira baslatilmaktadir. Saat sinyalinin "
+    "yukselen kenarinda write sinyali oncelikli olacak sekilde okuma/yazma islemi "
+    "gerceklestirilir. Bellekten yapilan senkron okuma (synchronous read) isleminde "
+    "verinin DR yazmacina ulasmasi bir sonraki saat darbesinde (1 cycle delay) "
+    "gerceklestiginden, mikroprogramdaki FETCH asamasinin zamanlamasi (timing) "
+    "bu gecikme gozetilerek tasarlanmistir. FPGA sentezinde bu modul otomatik olarak "
+    "Block RAM (BRAM) kaynaklarina eslenmektedir. (PC1)"
+)
+para(
+    "Ortak veri yolu (common_bus), 3-bitlik secim sinyali (sel) ile 8 farkli kaynaktan "
+    "birini 16-bitlik veri yoluna baglayan kombinasyonel bir cokleyici (multiplexer) "
+    "yapisidir. 12-bit genisligindeki yazmaclar (AR, PC) veri yoluna baglanirken ust "
+    "4 bit sifir ile doldurulur ({4'b0000, ar_in}); 8-bit genisligindeki INPR yazmaci "
+    "icin ust 8 bit sifir ile doldurulur ({8'h00, inpr_in}). Secim sinyali 000 oldugunda "
+    "veri yolu sifir degerini tasir ve hicbir yazma islemi gerceklesmez. (PC1)"
+)
+
+heading("5.1.3. Kontrol Birimi Katmani Detaylari", level=2)
+para(
+    "CAR (Control Address Register) modulu, okunacak bir sonraki mikrokomutun adresini "
+    "tutan 7-bitlik bir yazmacidir. Reset durumunda CAR, FETCH dongusunun baslangic "
+    "adresi olan 0x40 (7'b1000000) degerine yuklenir; bu sayede sistem her acildiginda "
+    "otomatik olarak komut cekme dongusune baslar. Normal isleyiste CAR ya load sinyali "
+    "ile yeni bir adres yukler (dallanma durumlari) ya da inc sinyali ile bir artar "
+    "(sirali isleyis). (PC1)"
+)
+para(
+    "SBR (Subroutine Register) modulu, alt program cagrisi (CALL) aninda donus "
+    "adresinin saklandigi 7-bitlik bir yazmacidir. CALL islemi sirasinda SBR'a "
+    "CAR + 1 degeri yuklenirken, RET islemi sirasinda SBR'daki deger CAR'a geri "
+    "yuklenerek cagrinin yapildigi noktaya donus saglanir. Bu mekanizma ozellikle "
+    "dolayli adresleme alt programi (INDIRECT subroutine, 0x48) icin kullanilmaktadir. (PC1)"
+)
+para(
+    "Kontrol bellegi (control_memory), 128 x 20-bit kapasiteli bir ROM olarak "
+    "tasarlanmistir. Verilog'da 'reg [19:0] rom [0:127]' dizisi ile tanimlanmis olup "
+    "tum mikroprogram icerigi initial blogu icerisinde localparam sabitleri "
+    "kullanilarak okunakli bicimde kodlanmistir. Her mikrokomut {F1, F2, F3, CD, BR, AD} "
+    "seklinde birlestirilmistir. Bellek haritasi su sekilde duzenlenmistir: AND komutu "
+    "0x00-0x02, ADD komutu 0x08-0x0A, LDA komutu 0x10-0x12, STA komutu 0x18-0x1A, "
+    "BUN komutu 0x20-0x21, BSA komutu 0x28-0x2C, ISZ komutu 0x30-0x36, Register-ref/IO "
+    "0x38-0x3F, FETCH dongusu 0x40-0x43 ve INDIRECT alt programi 0x48-0x4A adreslerinde "
+    "konumlandirilmistir. Kontrol bellegine erisim kombinasyonel assign deyimi "
+    "(assign data = rom[address]) ile saglanmakta olup bellek okuma gecikmesi "
+    "yalnizca kablo gecikmesine (wire delay) baglidir. (PC5)"
+)
+para(
+    "Mikrokomut cozucu (microinstruction_decoder), 20-bitlik mikrokomutu 21 ayri "
+    "kontrol sinyaline donusturen tamamen kombinasyonel bir moduldul. Giris olarak "
+    "aldigi 20-bit mikrokomutun ust 9 bitini (F1[19:17], F2[16:14], F3[13:11]) "
+    "3'er bitlik alanlara ayirir ve her alan icin 7 ayri esitlik karsilastirmasi "
+    "(assign f1_add = (f1 == 3'b001)) uygulayarak ilgili kontrol sinyalini uretir. "
+    "Kalan 6 bit (CD[10:9], BR[8:7], AD[6:0]) dogrudan cikis portlarina atanir. "
+    "Bu yaklasim, her saat darbesinde kontrol belleginden okunan mikrokomutun aninda "
+    "ilgili kontrol sinyallerine donusturulmesini saglamaktadir. (PC5)"
+)
+
+heading("5.1.4. Kontrol Birimi Dallanma Mantigi", level=2)
+para(
+    "Kontrol birimi ust modulu (control_unit.v), CAR, SBR, kontrol bellegi ve "
+    "mikrokomut cozucuyu birlestirmenin yani sira iki kritik kombinasyonel mantik "
+    "blogu icerir: kosul degerlendirmesi ve dallanma yonetimi. (PC5)"
+)
+para(
+    "Kosul degerlendirmesi, CD alaninin 2-bitlik degerine gore calisan bir "
+    "case ifadesiyle gerceklestirilir. CD = 00 (U: Unconditional) durumunda kosul "
+    "her zaman dogrudur (condition = 1). CD = 01 (I) durumunda IR[15] dolayli "
+    "adresleme biti kontrol edilir. CD = 10 (S) durumunda AC'nin isaret biti "
+    "(ac_sign = AC[15]) degerlendirilir. CD = 11 (Z) durumunda AC'nin sifir "
+    "olup olmadigi (ac_zero) kontrol edilir. (PC1)"
+)
+para(
+    "Dallanma yonetimi, BR alaninin 2-bitlik degerine gore dort farkli islem uretir. "
+    "BR = 00 (JMP) durumunda kosul saglaniyor ise CAR'a AD alani yuklenir, saglanmiyor "
+    "ise CAR bir arttirilir (sirali isleyis). BR = 01 (CALL) durumunda kosul "
+    "saglandiginda SBR'a CAR + 1 degeri kaydedilir ve CAR'a AD yuklenir; bu mekanizma "
+    "dolayli adresleme alt programi cagirisi icin kullanilir. BR = 10 (RET) durumunda "
+    "kosul degerlendirilmeksizin CAR'a SBR degeri yuklenerek alt programdan donus "
+    "saglanir. BR = 11 (MAP) durumunda CAR'a {1'b0, IR[14:12], 3'b000} formulu ile "
+    "hesaplanan adres yuklenir; bu formul her komutun opcode'unu kontrol bellegindeki "
+    "8 mikrokomutluk yurutme bloguna otomatik olarak yonlendirir. (PC5)"
+)
+
+heading("5.1.5. Ust Modul Entegrasyonu", level=2)
+para(
+    "Ust modul (mano_computer.v) icerisinde kontrol sinyallerinin veri yolu "
+    "bilesenlerine baglanmasi su ilkelerle gerceklestirilmistir. AR yazmaci, "
+    "f3_pctar (AR <- PC) veya f3_irtar (AR <- IR[11:0]) sinyalleriyle yuklenirken "
+    "bus secimi otomatik olarak ilgili kaynaga yonlendirilir: f3_pctar aktif ise "
+    "bus_sel = 010 (PC), f3_irtar aktif ise bus_sel = 101 (IR), f3_drtir aktif ise "
+    "bus_sel = 011 (DR), f3_actdr aktif ise bus_sel = 010 (PC, BSA komutu icin DR'ye "
+    "PC degeri yuklenmesi amacli) olarak secilir. (PC5)"
+)
+para(
+    "AC yazmaci, herhangi bir F1 islem sinyali (f1_add, f1_drtac, f1_andac, f1_comac) "
+    "veya F2 sinyali (f2_sub, f2_or, f2_shl, f2_shr) aktif oldugunda ALU sonucunu "
+    "(alu_result) yuklemektedir. f1_clrac sinyali AC'yi senkron olarak sifirlar, "
+    "f1_incac sinyali ise AC degerini bir arttirir. DR yazmaci f3_read (bellekten "
+    "okuma) veya f3_actdr (BSA icin PC degerinin yuklenmesi) sinyalleri ile yuklenirken, "
+    "f3_incdr sinyali DR degerini bir arttirir (ISZ komutu icin). PC yazmaci f2_artpc "
+    "sinyali ile AR degerini yukler (BUN, BSA komutlari), f2_incpc ile bir arttirilir "
+    "(fetch dongusunde). (PC5)"
+)
+para(
+    "ALU islem kodu secimi, kontrol biriminin F1 ve F2 alanlarina gore oncelikli "
+    "kosul ifadeleriyle (if-else if zinciri) belirlenmistir: f1_add -> 001 (ADD), "
+    "f1_andac -> 010 (AND), f1_comac -> 011 (COM), f2_shr -> 100 (SHR), "
+    "f2_shl -> 101 (SHL), f1_incac -> 110 (INC), f2_or -> 111 (OR). Hicbir "
+    "kontrol sinyali aktif degilse ALU varsayilan olarak 000 (PASSA) islemini "
+    "gerceklestirerek AC degerini degistirmeden gecirmektedir. (PC5)"
+)
+para(
+    "E (tasima/extend) biti, saat sinyalinin yukselen kenarinda calisan senkron "
+    "bir flip-flop ile yonetilmektedir. f1_clre sinyali aktif oldugunda E sifirlanir; "
+    "f2_come sinyali aktif oldugunda E tumlenenir (~e_flag); f1_add, f1_incac, f2_shl "
+    "veya f2_shr sinyallerinden herhangi biri aktif oldugunda E, ALU'nun carry_out "
+    "cikisina esitlenir. Bu yaklasim, kontrol birimi ile veri yolu arasinda net bir "
+    "arayuz tanimlayarak paralel gelistirme surecini mumkun kilmistir. (PC5)"
+)
+
+tbl_ctrl = doc.add_table(rows=9, cols=3)
+tbl_ctrl.style = "Table Grid"
+tbl_header(tbl_ctrl, ["Kontrol Sinyali", "Verilog Ifadesi", "Islev"])
+for i, row in enumerate([
+    ["bus_sel",  "f3 sinyallerine gore (010, 011, 101 vb.)", "Ortak veri yolu kaynak secimi (3-bit)"],
+    ["ar_load",  "f3_pctar | f3_irtar",    "AR yazmacina yukleme izni"],
+    ["ir_load",  "f3_drtir",               "IR yazmacina DR icerigini yukle"],
+    ["dr_load",  "f3_read | f3_actdr",     "DR'ye bellek veya bus verisi yukle"],
+    ["ac_load",  "f1_add | f1_drtac | ...", "AC'ye ALU sonucu yukle"],
+    ["ac_clr",   "f1_clrac",               "AC'yi senkron sifirla"],
+    ["pc_load",  "f2_artpc",               "PC'ye AR degerini yukle"],
+    ["pc_inc",   "f2_incpc",               "PC'yi bir arttir"],
+]):
+    tbl_row(tbl_ctrl, i + 1, row)
+cap("Tablo 5.2. Ust Modul Kontrol Sinyal Baglantiları")
+
+heading("5.1.6. Tasarim Kararlari ve Gerekceleri", level=2)
+para(
+    "Verilog implementasyonunda alinan temel tasarim kararlari sunlardir: "
+    "(i) Tum yazmaclar posedge clk ve posedge reset ile calisan senkron tasarim "
+    "prensibiyle gerceklenmis olup asenkron reset yalnizca sistem baslatma icin "
+    "kullanilmaktadir; bu yaklasim FPGA sentezinde guvenilir zamanlama saglamaktadir. "
+    "(ii) Kontrol bellegi Verilog initial blogu ile baslatilmis olup sentez aracilari "
+    "tarafindan otomatik olarak LUT veya BRAM kaynaklarina eslenmektedir. "
+    "(iii) ALU tamamen kombinasyonel olarak tasarlanmistir; sonuclarin yazmaclara "
+    "yansitilmasi saat kenarinda kontrol sinyalleriyle saglanmaktadir. "
+    "(iv) Kontrol birimi ile veri yolu arasindaki arayuz, 21 ayri tek-bit kontrol "
+    "sinyali uzerinden tanimlanmistir; bu yaklasim iki katmanin bagimsiz olarak "
+    "gelistirilip test edilmesine olanak tanimistir. "
+    "(v) BSA komutu icin f3_actdr sinyali algindiginda bus secimi PC'ye (010) "
+    "yonlendirilmek suretiyle DR'ye PC degeri yuklenebilmektedir; bu ozel durum "
+    "kontrol belleginde ek bir F3 kodu tanimlamaya gerek kalmadan ust modul "
+    "mantiginda cozulmustur. (PC1, PC5)"
 )
 
 heading("5.2. Test Senaryolari ve Sonuclar", level=2)
@@ -708,7 +1115,7 @@ for i in range(1, 4):
         set_font(cell_v.paragraphs[0].add_run(v))
     para()
 
-# ── Kaydet ────────────────────────────────────────────────────────────
-out = "/Users/erenkendir/Desktop/mimari1/Rapor_Iskelet.docx"
+import os
+out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Rapor_Iskelet_v2.docx")
 doc.save(out)
 print(f"Dosya olusturuldu: {out}")
