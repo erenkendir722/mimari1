@@ -1,5 +1,5 @@
-// ALU ??? Aritmetik ve Mant??ksal Birim
-// op kodlar??:
+// ALU - Aritmetik ve Mantıksal Birim
+// op kodları:
 //   000 = PASSA   001 = ADD   010 = AND   011 = COM
 //   100 = SHR     101 = SHL   110 = iNC   111 = OR
 module alu (

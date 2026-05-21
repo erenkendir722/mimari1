@@ -1,13 +1,13 @@
-// Common Bus ??? 16-bit Ortak Veri Yolu
+// Common Bus - 16-bit Ortak Veri Yolu
 // sel | Kaynak
-// 000 | (s??f??r)
-// 001 | AR (12-bit, ??st 4 bit = 0)
-// 010 | PC (12-bit, ??st 4 bit = 0)
+// 000 | (sıfır)
+// 001 | AR (12-bit, üst 4 bit = 0)
+// 010 | PC (12-bit, üst 4 bit = 0)
 // 011 | DR
 // 100 | AC
 // 101 | iR
 // 110 | TR
-// 111 | iNPR (8-bit, ??st 8 bit = 0)
+// 111 | INPR (8-bit, üst 8 bit = 0)
 module common_bus (
     input  wire [2:0]  sel,
     input  wire [11:0] ar_in,

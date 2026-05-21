@@ -1,5 +1,5 @@
-// 16-bit Genel Ama??l?? Yazma??
-// Kullan??m: AC, DR, TR, iR
+// 16-bit Genel Amaçlı Yazmaç
+// Kullanım: AC, DR, TR, IR
 module reg16 (
     input  wire        clk,
     input  wire        reset,
